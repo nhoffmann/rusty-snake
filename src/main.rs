@@ -72,10 +72,12 @@ struct LastTailPosition(Option<Position>);
 #[derive(Event)]
 struct GameOverEvent;
 
-fn main() {
-    App::new()
-        .add_systems(Startup, (setup_camera, spawn_snake).chain())
-        .add_systems(
+struct Snake;
+
+impl Plugin for Snake {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, (setup_camera, spawn_snake).chain());
+        app.add_systems(
             FixedUpdate,
             (
                 food_spawner.run_if(on_timer(Duration::from_secs(1))),
@@ -87,23 +89,23 @@ fn main() {
                 )
                     .chain(),
             ),
-        )
-        .add_systems(Update, snake_movement_input)
-        .add_systems(PostUpdate, (position_translation, size_scaling).chain())
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
+        );
+        app.add_systems(Update, snake_movement_input);
+        app.add_systems(PostUpdate, (position_translation, size_scaling).chain());
+        app.add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Snake".into(),
                 resolution: (500., 500.).into(),
                 ..default()
             }),
             ..default()
-        }))
-        .insert_resource(ClearColor(Color::srgb(0.04, 0.04, 0.04)))
-        .insert_resource(SnakeSegments::default())
-        .insert_resource(LastTailPosition::default())
-        .add_event::<GrowthEvent>()
-        .add_event::<GameOverEvent>()
-        .run();
+        }));
+        app.insert_resource(ClearColor(Color::srgb(0.04, 0.04, 0.04)));
+        app.insert_resource(SnakeSegments::default());
+        app.insert_resource(LastTailPosition::default());
+        app.add_event::<GrowthEvent>();
+        app.add_event::<GameOverEvent>();
+    }
 }
 
 fn setup_camera(mut commands: Commands) {
@@ -171,13 +173,14 @@ fn size_scaling(
     windows: Query<&Window, With<PrimaryWindow>>,
     mut q: Query<(&Size, &mut Transform)>,
 ) {
-    let window = windows.single();
-    for (sprite_size, mut transform) in q.iter_mut() {
-        transform.scale = Vec3::new(
-            sprite_size.width / ARENA_WIDTH as f32 * window.width() as f32,
-            sprite_size.height / ARENA_HEIGHT as f32 * window.height() as f32,
-            1.0,
-        );
+    if let Ok(window) = windows.get_single() {
+        for (sprite_size, mut transform) in q.iter_mut() {
+            transform.scale = Vec3::new(
+                sprite_size.width / ARENA_WIDTH as f32 * window.width() as f32,
+                sprite_size.height / ARENA_HEIGHT as f32 * window.height() as f32,
+                1.0,
+            );
+        }
     }
 }
 
@@ -189,13 +192,14 @@ fn position_translation(
         let tile_size = bound_window / bound_game;
         pos / bound_game * bound_window - (bound_window / 2.0) + (tile_size / 2.0)
     }
-    let window = windows.single();
-    for (pos, mut transform) in q.iter_mut() {
-        transform.translation = Vec3::new(
-            convert(pos.x as f32, window.width() as f32, ARENA_WIDTH as f32),
-            convert(pos.y as f32, window.height() as f32, ARENA_HEIGHT as f32),
-            0.0,
-        );
+    if let Ok(window) = windows.get_single() {
+        for (pos, mut transform) in q.iter_mut() {
+            transform.translation = Vec3::new(
+                convert(pos.x as f32, window.width() as f32, ARENA_WIDTH as f32),
+                convert(pos.y as f32, window.height() as f32, ARENA_HEIGHT as f32),
+                0.0,
+            );
+        }
     }
 }
 
@@ -282,9 +286,9 @@ fn snake_eating(
     head_positions: Query<&Position, With<SnakeHead>>,
 ) {
     for head_pos in head_positions.iter() {
-        for (ent, food_pos) in food_positions.iter() {
+        for (food_entity, food_pos) in food_positions.iter() {
             if food_pos == head_pos {
-                commands.entity(ent).despawn();
+                commands.entity(food_entity).despawn();
                 growth_writer.send(GrowthEvent);
             }
         }
@@ -299,9 +303,15 @@ fn game_over(
     segments: Query<Entity, With<SnakeSegment>>,
 ) {
     if reader.read().next().is_some() {
+        // remove all food and snake segments
         for ent in food.iter().chain(segments.iter()) {
             commands.entity(ent).despawn();
         }
+        // spawn a new snake
         spawn_snake(commands, segments_res);
     }
+}
+
+fn main() {
+    App::new().add_plugins(Snake).run();
 }

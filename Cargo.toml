@@ -6,3 +6,6 @@ version = "0.1.0"
 [dependencies]
 bevy = "0.14.0"
 rand = "0.8.5"
+
+[target.wasm32-unknown-unknown]
+runner = "wasm-server-runner"
